@@ -6,10 +6,10 @@ const Doctors = require('./doctors.model');
 const createDoctor = async (req, res) => {
   const { email } = req.body;
 
-  const existingDoctor = await Doctors.findOne({ email });
+  const existingDoctor = await Doctors.findOne({ email }).select('_id').lean();
 
   if (existingDoctor) {
-    throw errorHandler(new Error('Doctor with this email already exists'),req,res);
+    throw errorHandler(new Error('Doctor with this email already exists'), req, res);
   }
 
   const doctor = await Doctors.create(req?.body);
@@ -37,22 +37,23 @@ const getDoctors = async (queryParams) => {
   const query = {};
 
   // Filter by specialization
-  if (specialization) {
+  if (specialization && specialization !== 'all') {
     query.specialization = specialization;
   }
 
   // Filter by hospital
-  if (hospital) {
+  if (hospital && hospital !== 'all') {
     query.hospital = hospital;
   }
 
-  // Search
-  if (search) {
+  // Search with escaped special characters
+  if (search && search.trim()) {
+    const escaped = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     query.$or = [
-      { name: { $regex: search, $options: 'i' } },
-      { email: { $regex: search, $options: 'i' } },
-      { hospital: { $regex: search, $options: 'i' } },
-      { specialization: { $regex: search, $options: 'i' } },
+      { name: { $regex: escaped, $options: 'i' } },
+      { email: { $regex: escaped, $options: 'i' } },
+      { hospital: { $regex: escaped, $options: 'i' } },
+      { specialization: { $regex: escaped, $options: 'i' } },
     ];
   }
 
@@ -81,12 +82,15 @@ const getDoctors = async (queryParams) => {
     }
   }
 
-  const doctors = await Doctors.find(query).populate('patients','name phone address')
-    .skip(Number(skip) || 0)
-    .limit(Number(limit) || 10)
-    .sort({ createdAt: -1 });
-
-  const total = await Doctors.countDocuments(query);
+  const [doctors, total] = await Promise.all([
+    Doctors.find(query)
+      .populate('patients', 'name phone address')
+      .skip(Number(skip) || 0)
+      .limit(Number(limit) || 10)
+      .sort({ createdAt: -1 })
+      .lean(),
+    Doctors.countDocuments(query),
+  ]);
 
   return {
     success: true,
@@ -104,13 +108,17 @@ const getDoctorById = async (req, res) => {
   const doctorId = req.params.id;
   
   if (!doctorId) {
-    errorHandler(new Error('Doctor ID is required'),req,res)  
+    errorHandler(new Error('Doctor ID is required'), req, res);
+    return;
   }
 
-  const doctor = await Doctors.findById(doctorId).populate('patients','name phone address');
+  const doctor = await Doctors.findById(doctorId)
+    .populate('patients', 'name phone address')
+    .lean();
 
   if (!doctor) {
-    errorHandler(new Error('Doctor not found'),req,res)  
+    errorHandler(new Error('Doctor not found'), req, res);
+    return;
   }
 
   return {
@@ -122,30 +130,33 @@ const getDoctorById = async (req, res) => {
 // Update doctor
 const updateDoctor = async (req, res) => {
   const doctorId = req.params.doctorId || req.params.id;
-  const {updateData} = req.body;
+  const { updateData } = req.body;
   
   if (!doctorId) {
-    errorHandler(new Error('Doctor ID is required'),req,res)  
+    errorHandler(new Error('Doctor ID is required'), req, res);
+    return;
   }
 
-  if (updateData.email) {
+  if (updateData?.email) {
     const existingDoctor = await Doctors.findOne({
       email: updateData.email,
       _id: { $ne: doctorId },
-    });
+    }).select('_id').lean();
 
     if (existingDoctor) {
-     errorHandler(new Error('Doctor with this email already exists'),req,res)  
+      errorHandler(new Error('Doctor with this email already exists'), req, res);
+      return;
     }
   }
 
   const doctor = await Doctors.findByIdAndUpdate(doctorId, updateData, {
     new: true,
     runValidators: true,
-  });
+  }).lean();
 
   if (!doctor) {
-    errorHandler(new Error('Doctor not found'),req,res)  
+    errorHandler(new Error('Doctor not found'), req, res);
+    return;
   }
 
   return {

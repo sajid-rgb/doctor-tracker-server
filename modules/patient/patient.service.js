@@ -5,17 +5,17 @@ const errorHandler = require('../../middlewares/error');
 // Create a new patient and link under doctor
 const createPatient = async (req, res) => {
   const patientData = req.body;
-  const doctorId =  patientData.doctorId;
+  const doctorId = patientData.doctorId;
 
   if (!doctorId) {
-    errorHandler(new Error('Doctor ID is required to add a patient'), req, res)
+    errorHandler(new Error('Doctor ID is required to add a patient'), req, res);
     return;
   }
 
-  // Verify doctor exists
-  const doctor = await Doctors.findById(doctorId);
+  // Verify doctor exists using .select('_id').lean()
+  const doctor = await Doctors.findById(doctorId).select('_id').lean();
   if (!doctor) {
-    errorHandler(new Error('Doctor not found with the provided ID'), req, res)
+    errorHandler(new Error('Doctor not found with the provided ID'), req, res);
     return;
   }
 
@@ -43,41 +43,49 @@ const getAllPatients = async (queryParams = {}) => {
     doctorId,
     gender,
     blood_group,
+    patientCondition,
     skip = 0,
     limit = 10,
   } = params;
 
   const query = {};
 
-  const targetDoctorId = doctorId || doctorId;
-  if (targetDoctorId) {
-    query.doctorId = targetDoctorId;
+  if (doctorId && doctorId !== 'all') {
+    query.doctorId = doctorId;
   }
 
-  if (gender) {
+  if (gender && gender !== 'all') {
     query.gender = gender;
   }
 
-  if (blood_group) {
+  if (blood_group && blood_group !== 'all') {
     query.blood_group = blood_group;
   }
 
-  if (search) {
+  if (patientCondition && patientCondition !== 'all') {
+    query.patientCondition = patientCondition;
+  } 
+
+  if (search && search.trim()) {
+    const escaped = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     query.$or = [
-      { name: { $regex: search, $options: 'i' } },
-      { email: { $regex: search, $options: 'i' } },
-      { phone: { $regex: search, $options: 'i' } },
-      { city: { $regex: search, $options: 'i' } },
+      { name: { $regex: escaped, $options: 'i' } },
+      { email: { $regex: escaped, $options: 'i' } },
+      { phone: { $regex: escaped, $options: 'i' } },
+      { city: { $regex: escaped, $options: 'i' } },
     ];
   }
 
-  const patients = await Patient.find(query)
-    .populate('doctorId', 'name email hospital specialization phone')
-    .skip(Number(skip) || 0)
-    .limit(Number(limit) || 10)
-    .sort({ createdAt: -1 });
 
-  const total = await Patient.countDocuments(query);
+  const [patients, total] = await Promise.all([
+    Patient.find(query)
+      .populate('doctorId', 'name email hospital specialization phone')
+      .skip(Number(skip) || 0)
+      .limit(Number(limit) || 10)
+      .sort({ createdAt: -1 })
+      .lean(),
+    Patient.countDocuments(query),
+  ]);
 
   return {
     patients,
@@ -89,21 +97,25 @@ const getAllPatients = async (queryParams = {}) => {
   };
 };
 
+const getPatientCondition = async (req,res) => {
+  const result = await Patient.distinct('patientCondition');
+  return (result || []).filter(Boolean);
+} 
+
 // Get patient by ID
-const getPatientById = async (req,res) => {
+const getPatientById = async (req, res) => {
   const patientId = req.params.id;
   if (!patientId) {
-    errorHandler(new Error('Patient ID is required'), req, res)
+    errorHandler(new Error('Patient ID is required'), req, res);
     return;
   }
 
-  const patient = await Patient.findById(patientId).populate(
-    'doctorId',
-    'name email hospital specialization phone'
-  );
+  const patient = await Patient.findById(patientId)
+    .populate('doctorId', 'name email hospital specialization phone')
+    .lean();
 
   if (!patient) {
-    errorHandler(new Error('Patient not found'), req, res)
+    errorHandler(new Error('Patient not found'), req, res);
     return;
   }
 
@@ -111,22 +123,23 @@ const getPatientById = async (req,res) => {
 };
 
 // Get all patients under a specific doctor
-const getPatientsByDoctor = async (req,res) => {
+const getPatientsByDoctor = async (req, res) => {
   const doctorId = req.params.id;
   if (!doctorId) {
-    errorHandler(new Error('Doctor ID is required'), req, res)
+    errorHandler(new Error('Doctor ID is required'), req, res);
     return;
   }
 
-  const doctor = await Doctors.findById(doctorId);
+
+  const [doctor, patients] = await Promise.all([
+    Doctors.findById(doctorId).select('name specialization hospital').lean(),
+    Patient.find({ doctorId: doctorId }).sort({ createdAt: -1 }).lean(),
+  ]);
+
   if (!doctor) {
-    errorHandler(new Error('Doctor not found'), req, res)
+    errorHandler(new Error('Doctor not found'), req, res);
     return;
   }
-
-  const patients = await Patient.find({ doctorId: doctorId }).sort({
-    createdAt: -1,
-  });
 
   return {
     doctor: {
@@ -141,35 +154,35 @@ const getPatientsByDoctor = async (req,res) => {
 };
 
 // Update patient details
-const updatePatient = async (req,res) => {
+const updatePatient = async (req, res) => {
   const patientId = req.params.id;
   const updateData = req.body;
   if (!patientId) {
-    errorHandler(new Error('Patient ID is required'), req, res)
+    errorHandler(new Error('Patient ID is required'), req, res);
     return;
   }
 
-  const existingPatient = await Patient.findById(patientId);
+  const existingPatient = await Patient.findById(patientId).select('doctorId');
   if (!existingPatient) {
-    errorHandler(new Error('Patient not found'), req, res)
+    errorHandler(new Error('Patient not found'), req, res);
     return;
   }
 
-  const newDoctorId = updateData.doctorId || updateData.doctorId;
+  const newDoctorId = updateData.doctorId;
 
-  // If doctor is being changed, update patient arrays in both doctors
+
   if (
     newDoctorId &&
     existingPatient.doctorId &&
     existingPatient.doctorId.toString() !== newDoctorId.toString()
   ) {
-    const newDoctor = await Doctors.findById(newDoctorId);
+    const newDoctor = await Doctors.findById(newDoctorId).select('_id').lean();
     if (!newDoctor) {
-      errorHandler(new Error('New doctor not found with the provided ID'), req, res)
+      errorHandler(new Error('New doctor not found with the provided ID'), req, res);
       return;
     }
 
-    // Remove from old doctor's patients list
+  
     await Doctors.findByIdAndUpdate(existingPatient.doctorId, {
       $pull: { patients: existingPatient._id },
     });
@@ -189,7 +202,7 @@ const updatePatient = async (req,res) => {
       new: true,
       runValidators: true,
     }
-  ).populate('doctorId', 'name email hospital specialization phone');
+  ).populate('doctorId', 'name email hospital specialization phone').lean();
 
   return updatedPatient;
 };
@@ -198,13 +211,13 @@ const updatePatient = async (req,res) => {
 const deletePatient = async (req, res) => {
   const patientId = req.params.id;
   if (!patientId) {
-    errorHandler(new Error('Patient ID is required'), req, res)
+    errorHandler(new Error('Patient ID is required'), req, res);
     return;
   }
 
   const patient = await Patient.findByIdAndDelete(patientId);
   if (!patient) {
-    errorHandler(new Error('Patient not found'), req, res)
+    errorHandler(new Error('Patient not found'), req, res);
     return;
   }
 
@@ -218,27 +231,7 @@ const deletePatient = async (req, res) => {
   return patient;
 };
 
-const deletePatientsFromDoctor = async (req, res) => {
-  const patientId = req.params.id;
-  if (!patientId) {
-    errorHandler(new Error('Patient ID is required'), req, res)
-    return;
-  }
-
-  const patient = await Patient.findByIdAndDelete(patientId);
-  if (!patient) {
-    throw new Error('Patient not found');
-  }
-
-  // Remove patient reference from doctor
-  if (patient.doctorId) {
-    await Doctors.findByIdAndUpdate(patient.doctorId, {
-      $pull: { patients: patient._id },
-    });
-  }
-
-  return patient;
-};
+const deletePatientsFromDoctor = deletePatient;
 
 module.exports = {
   createPatient,
@@ -247,5 +240,6 @@ module.exports = {
   getPatientsByDoctor,
   updatePatient,
   deletePatient,
-    deletePatientsFromDoctor
+  deletePatientsFromDoctor,
+  getPatientCondition
 };

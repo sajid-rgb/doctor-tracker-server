@@ -24,8 +24,11 @@ connectDB();
 
 // Use the users router
 app.use('/api', router);
+app.use(router);
 
 // Start the server
 app.listen(port, () => {
   console.log(`Server is running on http://localhost:${port}`);
 });
+
+module.exports = app;

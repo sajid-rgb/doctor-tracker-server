@@ -20,10 +20,13 @@ const patientSchema = new mongoose.Schema(
         },
         city: {
             type: String,
-            required: true,
+            required: false,
         },
-    
-    age: {
+        patientCondition:{
+            type: String,
+            required: false,
+        },
+        age: {
             type: Number,
             required: true,
         },
@@ -46,6 +49,12 @@ const patientSchema = new mongoose.Schema(
         timestamps: true,
     }
 );
+
+
+patientSchema.index({ doctorId: 1, createdAt: -1 });
+patientSchema.index({ createdAt: -1 });
+patientSchema.index({ gender: 1 });
+patientSchema.index({ blood_group: 1 });
 
 const Patient = mongoose.model('Patient', patientSchema);
 

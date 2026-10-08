@@ -26,6 +26,18 @@ const getAllPatients = async (req,res) => {
     }
 }
 
+const getPatientCondition = async(req,res)=>{
+    try {
+        const result = await patientService.getPatientCondition(req,res);
+        res.status(200).json({
+            success: true,
+            data: result,
+        });
+    } catch (error) {
+        errorHandler(error,req,res)
+    }
+}
+
 const getPatientById = async (req,res) => {
     try {
         const result = await patientService.getPatientById(req,res);
@@ -92,6 +104,7 @@ const deletePatientsFromDoctor = async (req,res) => {
 module.exports = {
     createPatient,
     getAllPatients,
+    getPatientCondition,
     getPatientById,
     getPatientsByDoctor,
     updatePatient,

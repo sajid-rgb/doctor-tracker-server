@@ -4,17 +4,15 @@ const User = require('./users.model');
 const createUser = async (userData) => {
   const { username, email, password, role } = userData;
 
-  // Check if username already exists
-  const existingUsername = await User.findOne({ username });
+  // Check if username or email already exists in a single query
+  const existingUser = await User.findOne({
+    $or: [{ username }, { email }],
+  }).select('_id username email').lean();
 
-  if (existingUsername) {
-    throw new Error('Username already exists');
-  }
-
-  // Check if email already exists
-  const existingEmail = await User.findOne({ email });
-
-  if (existingEmail) {
+  if (existingUser) {
+    if (existingUser.username === username) {
+      throw new Error('Username already exists');
+    }
     throw new Error('Email already exists');
   }
 
@@ -31,7 +29,7 @@ const createUser = async (userData) => {
 
 // Find user by ID
 const getUserById = async (userId) => {
-  const user = await User.findById(userId);
+  const user = await User.findById(userId).select('-password').lean();
 
   if (!user) {
     throw new Error('User not found');
@@ -42,7 +40,7 @@ const getUserById = async (userId) => {
 
 // Find user by email
 const getUserByEmail = async (email) => {
-  const user = await User.findOne({ email });
+  const user = await User.findOne({ email }).select('-password').lean();
 
   if (!user) {
     throw new Error('User not found');
@@ -53,7 +51,7 @@ const getUserByEmail = async (email) => {
 
 // Get all users
 const getAllUsers = async (query = {}) => {
-  const users = await User.find(query);
+  const users = await User.find(query).select('-password').sort({ createdAt: -1 }).lean();
 
   return users;
 };
@@ -63,7 +61,7 @@ const updateUser = async (userId, updateData) => {
   const user = await User.findByIdAndUpdate(userId, updateData, {
     new: true,
     runValidators: true,
-  });
+  }).select('-password').lean();
 
   if (!user) {
     throw new Error('User not found');

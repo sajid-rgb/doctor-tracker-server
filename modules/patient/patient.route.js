@@ -11,13 +11,18 @@ router.post('/', patientController.createPatient);
 // Get all patients
 router.get('/', patientController.getAllPatients);
 
+// Get patient condition
+router.get('/getPatientCondition', patientController.getPatientCondition);
+
+// Get patient by doctor
+router.get('/getPatientsByDoctor/:id', patientController.getPatientsByDoctor);
+
 // Get patient by ID
 router.get('/:id', patientController.getPatientById);
 
-router.get('/getPatientsByDoctor/:id', patientController.getPatientsByDoctor);
-
 // Update patient
 router.patch('/:id', patientController.updatePatient);
+
 router.put('/:id', patientController.updatePatient);
 
 // delete patient from doctor

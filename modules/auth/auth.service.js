@@ -5,9 +5,9 @@ const errorHandler = require('../../middlewares/error');
 
 const registerUser = async (req, res) => {
   console.log('body', req.body);
+  const { username, email, password, role = 'admin' } = req.body;
 
-  const { username, email, password, role } = req.body;
-  const existingUser = await User.findOne({ $or: [{ email }, { username }] });
+  const existingUser = await User.findOne({ $or: [{ email }, { username }] }).select('_id').lean();
   if (existingUser) {
     errorHandler(new Error('User already exists'), req, res);
     return;

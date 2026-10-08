@@ -18,7 +18,7 @@ const getDashboardStats = async () => {
     Patient.aggregate([
       { $group: { _id: "$doctorId", count: { $sum: 1 } } },
       { $sort: { count: -1 } },
-      { $limit: 10 }, // Top 10 doctors by patients to avoid sending thousands
+      { $limit: 100 },
       { $lookup: { from: 'doctors', localField: '_id', foreignField: '_id', as: 'doctor' } },
       { $unwind: { path: '$doctor', preserveNullAndEmptyArrays: true } },
       {
